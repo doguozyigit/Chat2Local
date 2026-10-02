@@ -88,6 +88,8 @@ test("npm release packs only installer runtime with merged pinned release metada
   assert.equal(metadata.private, false);
   assert.equal(metadata.name, report.name);
   assert.equal(metadata.version, report.version);
+  assert.deepEqual(metadata.os, ["darwin"]);
+  assert.deepEqual(metadata.cpu, ["arm64", "x64"]);
   assert.deepEqual(metadata.repository, { type: "git", url: "git+https://github.com/example/chat2local.git" });
   assert.equal(metadata.scripts, undefined);
   const releasedManifest = JSON.parse((await execute("tar", ["-xOf", report.archive, "package/release-manifest.json"])).stdout);

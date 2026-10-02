@@ -8,7 +8,6 @@
   "bin": { "chat2local": "bin/chat2local.mjs" },
   "files": ["bin", "src", "release-manifest.json", "README.md", "LICENSE"],
   "engines": { "node": ">=20" },
-  "os": ["darwin"],
   "cpu": ["arm64", "x64"],
   "scripts": { "test": "node --test test/*.test.mjs" },
   "dependencies": {}
