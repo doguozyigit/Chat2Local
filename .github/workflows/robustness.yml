@@ -18,6 +18,10 @@ jobs:
           node-version: '24'
           cache: npm
       - run: npm ci
+      - name: Install the shell used by service checks
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends zsh
       - run: npm run check
       - run: npm run release:check
 
