@@ -27,6 +27,8 @@ The app includes Node, its local tool service, and a pinned official OpenAI tunn
 
 ### 2. Connect ChatGPT
 
+See the [visual connection guide](docs/CONNECTION_SCREENS.md) for OpenAI's sanitized tunnel and ChatGPT setup screenshots, plus a diagram of the runtime-key field.
+
 Create a Secure MCP Tunnel in your OpenAI Platform organization, associate it with your ChatGPT workspace, and obtain a runtime key authorized to use it. Enter the tunnel ID and runtime key in Chat2Local's **ChatGPT connection** settings, then choose **Save and connect**.
 
 In ChatGPT, enable developer mode if your account supports it, create a tunnel connection, and select it in a chat. The [installation guide](docs/INSTALL.md) explains these steps and the permissions they require. The runtime key is used for tunnel transport; Chat2Local does not use it for model-inference API calls.

@@ -31,6 +31,8 @@ If Swift reports an SDK/compiler mismatch, select a compatible Xcode toolchain o
 
 ## 2. Create the ChatGPT connection
 
+Prefer pictures? Follow the [visual connection guide](CONNECTION_SCREENS.md), with OpenAI's sanitized screenshots and a placeholder runtime-key diagram.
+
 Chat2Local already includes the local MCP API server. You do not need to build another API server. The tunnel lets ChatGPT reach it through an outbound connection from your Mac.
 
 OpenAI account access is separate from installing Chat2Local. This preview uses a private developer connection; it is not a public plugin-directory installation.

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="580" viewBox="0 0 1040 580" role="img" aria-labelledby="title desc">
+  <title id="title">Chat2Local runtime key setup illustration</title>
+  <desc id="desc">An authorized runtime key from the tunnel's OpenAI Platform organization goes into Chat2Local's masked Runtime key field. The tunnel ID goes into its own field. All values are placeholders; this is not a screenshot.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2873c8"/></marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; fill: #183042; }
+      .title { font-size: 24px; font-weight: 650; }
+      .heading { font-size: 19px; font-weight: 600; }
+      .body { font-size: 16px; }
+      .small { font-size: 14px; }
+      .muted { fill: #637487; }
+    </style>
+  </defs>
+  <rect width="1040" height="580" rx="20" fill="#eef4fa"/>
+  <text x="44" y="49" class="title">Connect the tunnel to Chat2Local</text>
+  <text x="44" y="77" class="body muted">Your runtime key stays in the masked local field.</text>
+  <rect x="44" y="110" width="354" height="363" rx="16" fill="#fff" stroke="#d3dfe9"/>
+  <text x="68" y="151" class="heading">OpenAI Platform</text>
+  <text x="68" y="180" class="small muted">The organization that owns your tunnel</text>
+  <line x1="68" y1="201" x2="374" y2="201" stroke="#dce5ec"/>
+  <text x="68" y="230" class="body" font-weight="600">1. Copy the tunnel ID</text>
+  <rect x="68" y="245" width="306" height="43" rx="8" fill="#f3f7fb"/>
+  <text x="83" y="272" class="body">tunnel_EXAMPLE</text>
+  <text x="68" y="324" class="body" font-weight="600">2. Obtain an authorized runtime key</text>
+  <text x="68" y="353" class="body muted">Use your organization's setup flow</text>
+  <text x="68" y="377" class="body muted">or ask its owner / RBAC administrator.</text>
+  <rect x="68" y="399" width="306" height="47" rx="8" fill="#e8f4ee"/>
+  <text x="83" y="428" class="body" font-weight="600">Required access: Tunnels Read + Use</text>
+  <path d="M413 267H461" fill="none" stroke="#2873c8" stroke-width="3" marker-end="url(#arrow)"/>
+  <path d="M413 350H461" fill="none" stroke="#2873c8" stroke-width="3" marker-end="url(#arrow)"/>
+  <rect x="482" y="110" width="514" height="363" rx="16" fill="#fff" stroke="#d3dfe9"/>
+  <text x="506" y="150" class="heading">Chat2Local</text>
+  <text x="506" y="178" class="body muted">ChatGPT connection · Connection settings</text>
+  <text x="506" y="218" class="small" font-weight="600">Tunnel ID</text>
+  <rect x="506" y="230" width="466" height="44" rx="8" fill="#f8fafc" stroke="#cbd9e5"/>
+  <text x="523" y="258" class="body">tunnel_EXAMPLE</text>
+  <text x="506" y="304" class="small" font-weight="600">Runtime key</text>
+  <rect x="506" y="316" width="466" height="44" rx="8" fill="#f8fafc" stroke="#cbd9e5"/>
+  <text x="523" y="345" class="heading">••••••••••••••••</text>
+  <text x="506" y="388" class="small muted">Leave the external client location empty.</text>
+  <rect x="506" y="408" width="183" height="42" rx="8" fill="#2873c8"/>
+  <text x="527" y="435" class="body" style="fill:#fff;font-weight:600">Save and connect</text>
+  <text x="717" y="433" class="small muted">Then wait for Connected.</text>
+  <text x="44" y="517" class="body">Transport credential → macOS Keychain. No model-inference API requests from Chat2Local.</text>
+  <text x="44" y="549" class="small muted">Illustration · Placeholder values · Not a screenshot or a universal API-key creation screen</text>
+</svg>
