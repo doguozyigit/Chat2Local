@@ -1,0 +1,37 @@
+{
+  "name": "chat2local",
+  "version": "0.3.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "apps/daemon",
+    "packages/protocol",
+    "packages/installer"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @local-dev/daemon",
+    "build": "npm run build -w @local-dev/protocol && npm run build -w @local-dev/daemon",
+    "typecheck": "npm run build -w @local-dev/protocol && npm run typecheck -w @local-dev/daemon",
+    "test": "npm run build && npm run test -w @local-dev/daemon && node --test plugin/local-dev/scripts/mcp-stdio-bridge.test.mjs scripts/*.test.mjs packages/installer/test/*.test.mjs",
+    "check": "npm run typecheck && npm test",
+    "robustness": "bash scripts/robustness-check.sh",
+    "bundle:daemon": "npm run build && esbuild apps/daemon/dist/index.js --bundle --platform=node --format=esm --target=node24 --packages=bundle --outfile=dist/local-devd.mjs",
+    "macos:build": "swift build --package-path apps/macos",
+    "macos:package": "bash scripts/build-macos-app.sh",
+    "install:check": "node scripts/fresh-install-check.mjs",
+    "recovery:check": "node scripts/work-recovery-check.mjs",
+    "release:check": "node scripts/release-preview.mjs --check",
+    "release:export": "node scripts/release-preview.mjs --export",
+    "release:desktop": "node scripts/package-desktop-release.mjs",
+    "release:npm": "node scripts/prepare-npm-release.mjs",
+    "installer:test": "node --test packages/installer/test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  },
+  "dependencies": {}
+}

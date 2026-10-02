@@ -1,0 +1,33 @@
+name: Prepare desktop release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run robustness
+      - name: Build developer preview with its pinned tunnel runtime
+        run: npm run macos:package
+      - run: npm run install:check
+      - name: Prepare app archive and pinned manifest for this repository
+        run: npm run release:desktop -- --repository "$GITHUB_REPOSITORY"
+      - name: Upload developer preview files for inspection
+        uses: actions/upload-artifact@v7
+        with:
+          name: chat2local-desktop-preview
+          path: dist/releases/*
+          if-no-files-found: error
+
+# This workflow prepares ad hoc development artifacts. It does not publish a
+# GitHub release or npm package, and does not claim Developer ID notarization.

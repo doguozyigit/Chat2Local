@@ -1,0 +1,27 @@
+{
+  "name": "@local-dev/daemon",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "local-devd": "./dist/index.js"
+  },
+  "scripts": {
+    "dev": "tsx src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test src/*.test.ts",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@local-dev/protocol": "0.3.0",
+    "@modelcontextprotocol/node": "^2.0.0",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2"
+  }
+}

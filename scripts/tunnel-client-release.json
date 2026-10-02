@@ -1,0 +1,16 @@
+{
+  "upstreamRepository": "https://github.com/openai/tunnel-client",
+  "version": "0.0.15",
+  "assets": {
+    "arm64": {
+      "url": "https://github.com/openai/tunnel-client/releases/download/v0.0.15/tunnel-client-runtime-v0.0.15-darwin-arm64.zip",
+      "sha256": "e416ea9ea13e1b8be0d0a355fbd28143cfa55fe5a32b2986fce1a516d7b5e2ad",
+      "size": 6938206
+    },
+    "x64": {
+      "url": "https://github.com/openai/tunnel-client/releases/download/v0.0.15/tunnel-client-runtime-v0.0.15-darwin-amd64.zip",
+      "sha256": "2d3a2b3a985ad2fcfddc4a82a0caa6624ee9383e7d85e82563bf1fe3ce905794",
+      "size": 7540502
+    }
+  }
+}

@@ -1,0 +1,41 @@
+name: Robustness
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run release:check
+
+  desktop:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run robustness
+      - name: Build the app from source without a signing certificate
+        run: npm run macos:package
+      - name: Verify app signature and embedded runtime
+        run: |
+          codesign --verify --deep --strict "dist/Chat2Local.app"
+          "dist/Chat2Local.app/Contents/Resources/node" --version
+      - name: Check the packaged service with empty local state
+        run: npm run install:check

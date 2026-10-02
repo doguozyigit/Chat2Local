@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "chat2local",
+  "version": "0.3.0",
+  "description": "Connect ordinary ChatGPT chats to manually selected local folders, coding tools, and skills.",
+  "keywords": [
+    "developer-tools",
+    "coding",
+    "local",
+    "skills"
+  ],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "Chat2Local",
+        "shortDescription": "Local folders, coding tools, and skills in ChatGPT.",
+        "longDescription": "Manually select a folder for each ordinary ChatGPT chat in Chat2Local. Use scoped file and shell tools, installed and project skills, an isolated background browser, web reading, and image import. Several chats can select the same folder."
+      }
+    }
+  }
+}
