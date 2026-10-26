@@ -13,6 +13,14 @@ import type { TunnelStatus } from "@local-dev/protocol";
 
 type TunnelState = "off" | "starting" | "connected" | "error";
 
+// The tunnel client's first control-plane long poll runs with a 30s timeout,
+// and the observed time from process start to first confirmed poll is ~40s
+// (proxy connect + TLS + the control plane holding the poll). Health probes
+// must not count failures inside that window, or a perfectly healthy tunnel is
+// killed and restarted forever. 75s leaves margin without hiding a real
+// connectivity failure for too long.
+const HEALTH_PROBE_GRACE_MS = 75_000;
+
 interface TunnelConfiguration {
   tunnelId: string;
   runtimeApiKey: string;
@@ -27,6 +35,11 @@ export class TunnelManager {
   private runtimeApiKey: string | null = null;
   private configuredClientPath: string | null = null;
   private stopping = false;
+  private healthProbeInFlight = false;
+  private lastHealthProbeAt = 0;
+  private healthFailures = 0;
+  private startedAt = 0;
+  private healthGraceMs = HEALTH_PROBE_GRACE_MS;
 
   private readonly pidFile: string;
   private readonly healthUrlFile: string;
@@ -64,6 +77,14 @@ export class TunnelManager {
   }
 
   status(): TunnelStatus {
+    // A process can die before its exit callback is delivered. Never advertise
+    // a dead tunnel as connected; the native app will then retry with backoff.
+    if ((this.state === "connected" || this.state === "starting") && !this.processRunning(this.process?.pid)) {
+      this.state = "error";
+      this.error = "Tunnel process is no longer running; reconnect required.";
+      this.process = null;
+    }
+    if (this.state === "connected" || this.state === "starting") this.scheduleHealthProbe();
     return {
       enabled: this.state !== "off",
       connected: this.state === "connected",
@@ -77,7 +98,7 @@ export class TunnelManager {
   }
 
   async start(): Promise<TunnelStatus> {
-    if (this.state === "connected" && this.processRunning(this.process?.pid)) {
+    if ((this.state === "connected" || this.state === "starting") && this.processRunning(this.process?.pid)) {
       return this.status();
     }
 
@@ -106,6 +127,9 @@ export class TunnelManager {
 
     this.state = "starting";
     this.error = null;
+    this.healthFailures = 0;
+    this.lastHealthProbeAt = 0;
+    this.startedAt = Date.now();
     this.stopping = false;
 
     const child = spawn(
@@ -144,21 +168,23 @@ export class TunnelManager {
     this.process = child;
 
     child.once("error", (error) => {
+      if (this.process !== child) return;
       this.error = error.message;
       this.state = "error";
       this.process = null;
     });
 
     child.once("exit", (code, signal) => {
-      if (this.process === child) {
-        this.process = null;
-      }
-      if (this.stopping || signal === "SIGTERM") {
+      // Ignore delayed callbacks from a replaced process; otherwise an old
+      // client can incorrectly mark the new, healthy tunnel as disconnected.
+      if (this.process !== child) return;
+      this.process = null;
+      if (this.stopping || (signal === "SIGTERM" && this.state !== "error")) {
         this.state = "off";
         this.error = null;
         return;
       }
-      if (code === 0) {
+      if (code === 0 && this.state !== "error") {
         this.state = "off";
         this.error = null;
         return;
@@ -181,7 +207,9 @@ export class TunnelManager {
       throw new Error(message);
     }
 
-    this.state = "connected";
+    // Local /readyz does not attest to a successful remote poll. Keep the
+    // UI in 'starting' until the control-plane metric confirms connectivity.
+    this.state = "starting";
     this.error = null;
     return this.status();
   }
@@ -257,6 +285,63 @@ export class TunnelManager {
     rmSync(this.pidFile, { force: true });
     rmSync(this.healthUrlFile, { force: true });
     return this.status();
+  }
+
+  private scheduleHealthProbe(): void {
+    if (this.healthProbeInFlight || Date.now() - this.lastHealthProbeAt < 10_000) return;
+    const child = this.process;
+    const healthUrl = readTrimmedFile(this.healthUrlFile);
+    if (!child || !healthUrl || !/^http:\/\/127\.0\.0\.1:\d+$/.test(healthUrl)) return;
+    this.healthProbeInFlight = true;
+    this.lastHealthProbeAt = Date.now();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2_000);
+    void (async () => {
+      const ready = await fetch(`${healthUrl}/readyz`, { signal: controller.signal });
+      if (!ready.ok) return false;
+      // The tunnel's /readyz endpoint only confirms the *local* client is
+      // running. A persistent control-plane HTTP 403 still returns 200 here.
+      // Require a recent successful control-plane poll before claiming that
+      // ChatGPT can actually reach this Mac.
+      const metrics = await fetch(`${healthUrl}/metrics`, { signal: controller.signal });
+      if (!metrics.ok) return false;
+      const body = await metrics.text();
+      const lastPoll = body.match(/^commands_poll_last_successful_timestamp_seconds(?:\{[^\n]*\})?\s+([^\s]+)/m);
+      const lastSuccessSeconds = lastPoll ? Number(lastPoll[1]) : Number.NaN;
+      const secondsSinceLastSuccess = Date.now() / 1000 - lastSuccessSeconds;
+      return Number.isFinite(secondsSinceLastSuccess)
+        && secondsSinceLastSuccess >= -5
+        && secondsSinceLastSuccess <= 90;
+    })()
+      .then((healthy) => {
+        if (this.process !== child || (this.state !== "starting" && this.state !== "connected")) return;
+        if (healthy) {
+          this.healthFailures = 0;
+          this.state = "connected";
+          this.error = null;
+          return;
+        }
+        // The client's first control-plane long poll has its own 30s timeout, so
+        // `commands_poll_last_successful_timestamp_seconds` stays 0 until that
+        // poll returns. Counting failures inside that window killed a healthy
+        // tunnel before it could ever report success, which restarted it forever
+        // and kept the app permanently offline.
+        if (Date.now() - this.startedAt < this.healthGraceMs) return;
+        this.healthFailures += 1;
+      })
+      .catch(() => {
+        if (this.process === child && (this.state === "starting" || this.state === "connected")) this.healthFailures++;
+      })
+      .finally(() => {
+        clearTimeout(timeout);
+        this.healthProbeInFlight = false;
+        if (this.process === child && (this.state === "starting" || this.state === "connected") && this.healthFailures >= 3) {
+          this.state = "error";
+          this.error = "OpenAI control-plane connectivity could not be verified. Check the tunnel log for HTTP 403 or network errors.";
+          // Stop the unhealthy process before the native app starts a replacement.
+          try { child.kill("SIGTERM"); } catch { /* already gone */ }
+        }
+      });
   }
 
   private isConfigured(): boolean {

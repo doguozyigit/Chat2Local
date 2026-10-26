@@ -160,14 +160,192 @@ process.on('SIGTERM', () => server.close(() => process.exit(0)));
       runtimeApiKey: "sk-test-secret",
     });
     await tunnel.start();
-    assert.equal(tunnel.status().connected, true);
+    assert.equal(tunnel.status().state, "starting");
 
     const deadline = Date.now() + 2_000;
-    while (tunnel.status().connected && Date.now() < deadline) {
+    while (tunnel.status().state !== "off" && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 25));
     }
     assert.equal(tunnel.status().state, "off");
     assert.equal(tunnel.status().connected, false);
+  } finally {
+    await tunnel.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+
+test("repeated failed readiness probes mark a live tunnel unhealthy for reconnect", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "local-dev-tunnel-health-"));
+  const executable = join(directory, "fake-tunnel-client");
+  const failureFlag = join(directory, "unhealthy");
+  const token = "d".repeat(64);
+  writeFileSync(join(directory, "api-token"), `${token}\n`, { mode: 0o600 });
+  writeFileSync(executable, `#!/usr/bin/env node
+const fs = require('node:fs');
+const http = require('node:http');
+const args = process.argv.slice(2);
+const flag = (name) => args[args.indexOf(name) + 1];
+const server = http.createServer((req, res) => { res.writeHead(fs.existsSync(process.env.LOCAL_DEV_HEALTH_FAILURE_FLAG) ? 503 : 200); res.end(); });
+server.listen(0, '127.0.0.1', () => {
+ fs.writeFileSync(flag('--health.url-file'), 'http://127.0.0.1:' + server.address().port);
+ fs.writeFileSync(flag('--pid.file'), String(process.pid));
+});
+process.on('SIGTERM', () => server.close(() => process.exit(0)));
+`);
+  chmodSync(executable, 0o700);
+  const previous = process.env.LOCAL_DEV_HEALTH_FAILURE_FLAG;
+  process.env.LOCAL_DEV_HEALTH_FAILURE_FLAG = failureFlag;
+  const tunnel = new TunnelManager("http://127.0.0.1:43127/mcp", directory, executable, token);
+  try {
+    tunnel.configure({ tunnelId: "tunnel_0123456789abcdef0123456789abcdef", runtimeApiKey: "sk-test-secret" });
+    await tunnel.start();
+    writeFileSync(failureFlag, "fail");
+    const internal = tunnel as unknown as { lastHealthProbeAt: number; healthProbeInFlight: boolean; healthGraceMs: number };
+    // These cases assert the failure path, so skip the startup grace that gives
+    // a real client time to finish its first 30s control-plane long poll.
+    internal.healthGraceMs = 0;
+    for (let i = 0; i < 3; i++) {
+      internal.lastHealthProbeAt = 0;
+      tunnel.status();
+      const deadline = Date.now() + 2000;
+      while (internal.healthProbeInFlight && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(tunnel.status().connected, false);
+    assert.equal(tunnel.status().state, "error");
+    assert.match(tunnel.status().error ?? "", /control-plane connectivity/i);
+  } finally {
+    await tunnel.stop();
+    if (previous === undefined) delete process.env.LOCAL_DEV_HEALTH_FAILURE_FLAG;
+    else process.env.LOCAL_DEV_HEALTH_FAILURE_FLAG = previous;
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("local readiness alone cannot hide an unavailable remote control plane", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "local-dev-controlplane-test-"));
+  const executable = join(directory, "fake-tunnel-client");
+  const token = "e".repeat(64);
+  writeFileSync(join(directory, "api-token"), `${token}\n`, { mode: 0o600 });
+  writeFileSync(executable, `#!/usr/bin/env node
+const fs = require('node:fs');
+const http = require('node:http');
+const args = process.argv.slice(2);
+const flag = (name) => args[args.indexOf(name) + 1];
+const server = http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end(req.url === '/metrics' ? 'commands_poll_last_successful_timestamp_seconds 0\\n' : 'ready');
+});
+server.listen(0, '127.0.0.1', () => {
+  fs.writeFileSync(flag('--health.url-file'), 'http://127.0.0.1:' + server.address().port);
+  fs.writeFileSync(flag('--pid.file'), String(process.pid));
+});
+process.on('SIGTERM', () => server.close(() => process.exit(0)));
+`);
+  chmodSync(executable, 0o700);
+  const tunnel = new TunnelManager("http://127.0.0.1:43127/mcp", directory, executable, token);
+  try {
+    tunnel.configure({ tunnelId: "tunnel_0123456789abcdef0123456789abcdef", runtimeApiKey: "sk-test-secret" });
+    await tunnel.start();
+    const internal = tunnel as unknown as { lastHealthProbeAt: number; healthProbeInFlight: boolean; healthGraceMs: number };
+    // These cases assert the failure path, so skip the startup grace that gives
+    // a real client time to finish its first 30s control-plane long poll.
+    internal.healthGraceMs = 0;
+    for (let i = 0; i < 5 && tunnel.status().state !== "error"; i++) {
+      internal.lastHealthProbeAt = 0;
+      tunnel.status();
+      const deadline = Date.now() + 2_000;
+      while (internal.healthProbeInFlight && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(tunnel.status().connected, false);
+    assert.equal(tunnel.status().state, "error");
+  } finally {
+    await tunnel.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a slow first control-plane poll is not killed as unhealthy", async () => {
+  // Regression: the client's first long poll has a 30s timeout, so its
+  // last-successful-poll metric stays 0 for that whole window. Probing every
+  // 10s and giving up after 3 misses killed the tunnel at ~20s — before the
+  // first poll could ever succeed — which produced an endless restart loop and
+  // left the app permanently offline even though the client was healthy.
+  const directory = mkdtempSync(join(tmpdir(), "local-dev-controlplane-grace-"));
+  const executable = join(directory, "fake-tunnel-client");
+  const token = "f".repeat(64);
+  writeFileSync(join(directory, "api-token"), `${token}\n`, { mode: 0o600 });
+  writeFileSync(executable, `#!/usr/bin/env node
+const fs = require('node:fs');
+const http = require('node:http');
+const args = process.argv.slice(2);
+const flag = (name) => args[args.indexOf(name) + 1];
+const server = http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end(req.url === '/metrics' ? 'commands_poll_last_successful_timestamp_seconds 0\\n' : 'ready');
+});
+server.listen(0, '127.0.0.1', () => {
+  fs.writeFileSync(flag('--health.url-file'), 'http://127.0.0.1:' + server.address().port);
+  fs.writeFileSync(flag('--pid.file'), String(process.pid));
+});
+process.on('SIGTERM', () => server.close(() => process.exit(0)));
+`);
+  chmodSync(executable, 0o700);
+  const tunnel = new TunnelManager("http://127.0.0.1:43127/mcp", directory, executable, token);
+  try {
+    tunnel.configure({ tunnelId: "tunnel_0123456789abcdef0123456789abcdef", runtimeApiKey: "sk-test-secret" });
+    await tunnel.start();
+    const internal = tunnel as unknown as { lastHealthProbeAt: number; healthProbeInFlight: boolean };
+    // Force the equivalent of three 10s probe cycles while still inside the
+    // startup grace window.
+    for (let i = 0; i < 3; i++) {
+      internal.lastHealthProbeAt = 0;
+      tunnel.status();
+      const deadline = Date.now() + 2_000;
+      while (internal.healthProbeInFlight && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(tunnel.status().connected, false, "an unconfirmed poll must never report connected");
+    assert.equal(tunnel.status().state, "starting", "the tunnel must stay in starting during the grace window");
+    assert.equal(tunnel.status().error, null, "no connectivity error should be raised during the grace window");
+  } finally {
+    await tunnel.stop();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("tunnel reports connected after confirmed successful control-plane poll", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "local-dev-controlplane-success-"));
+  const executable = join(directory, "fake-tunnel-client");
+  const token = "f".repeat(64);
+  writeFileSync(join(directory, "api-token"), `${token}\n`, { mode: 0o600 });
+  writeFileSync(executable, `#!/usr/bin/env node
+const fs = require('node:fs');
+const http = require('node:http');
+const args = process.argv.slice(2);
+const flag = (name) => args[args.indexOf(name) + 1];
+const server = http.createServer((req, res) => {
+  res.writeHead(200);
+  res.end(req.url === '/metrics'
+    ? 'commands_poll_last_successful_timestamp_seconds ' + Math.floor(Date.now() / 1000) + '\\n'
+    : 'ready');
+});
+server.listen(0, '127.0.0.1', () => {
+  fs.writeFileSync(flag('--health.url-file'), 'http://127.0.0.1:' + server.address().port);
+  fs.writeFileSync(flag('--pid.file'), String(process.pid));
+});
+process.on('SIGTERM', () => server.close(() => process.exit(0)));
+`);
+  chmodSync(executable, 0o700);
+  const tunnel = new TunnelManager("http://127.0.0.1:43127/mcp", directory, executable, token);
+  try {
+    tunnel.configure({ tunnelId: "tunnel_0123456789abcdef0123456789abcdef", runtimeApiKey: "sk-test-secret" });
+    const started = await tunnel.start();
+    assert.equal(started.state, "starting");
+    const deadline = Date.now() + 2_000;
+    while (!tunnel.status().connected && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 15));
+    }
+    assert.equal(tunnel.status().connected, true);
   } finally {
     await tunnel.stop();
     rmSync(directory, { recursive: true, force: true });
